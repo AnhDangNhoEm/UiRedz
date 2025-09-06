@@ -1,0 +1,1386 @@
+-- RedzUIVip - Enhanced UI Library for Roblox
+-- Version: 2.0.0 VIP Edition
+-- Features: Modern gradient design, glow effects, smooth animations, premium look
+-- Author: Reimagined from redzlib for a unique and luxurious UI experience
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+
+local Player = Players.LocalPlayer
+local PlayerMouse = Player:GetMouse()
+
+local RedzUIVip = {
+    Themes = {
+        PremiumDark = {
+            ["Color Hub 1"] = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(10, 10, 20)),
+                ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 180, 0)), -- Gold gradient
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(10, 10, 20))
+            }),
+            ["Color Hub 2"] = Color3.fromRGB(25, 25, 35),
+            ["Color Stroke"] = Color3.fromRGB(255, 200, 0),
+            ["Color Theme"] = Color3.fromRGB(255, 215, 0),
+            ["Color Text"] = Color3.fromRGB(240, 240, 240),
+            ["Color Dark Text"] = Color3.fromRGB(180, 180, 200),
+            ["Color Toggle On"] = Color3.fromRGB(0, 255, 100),
+            ["Color Toggle Off"] = Color3.fromRGB(255, 50, 50),
+            ["Color Slider Fill"] = Color3.fromRGB(255, 165, 0),
+        }
+    },
+    Info = {
+        Version = "2.0.0"
+    },
+    Save = {
+        UISize = {600, 450}, -- Larger for premium look
+        TabSize = 180,
+        Theme = "PremiumDark"
+    },
+    Settings = {},
+    Connection = {},
+    Instances = {},
+    Elements = {},
+    Options = {},
+    Flags = {},
+    Tabs = {},
+    Icons = {
+        -- Use the same icon set as provided in the original code
+        ["accessibility"] = "rbxassetid://10709751939",
+        ["home"] = "rbxassetid://10723407389",
+        ["settings"] = "rbxassetid://10734950309",
+        -- Add more icons as needed from the original list
+        -- Truncated for brevity, use original Icons table if needed
+    }
+}
+
+-- Utility Functions
+local function Create(class, parent, props)
+    local inst = Instance.new(class)
+    if props then
+        for k, v in pairs(props) do
+            inst[k] = v
+        end
+    end
+    inst.Parent = parent
+    return inst
+end
+
+local function Make(class, parent, props)
+    local inst = Create(class, parent, props or {})
+    if class == "UICorner" then
+        inst.CornerRadius = props and props.CornerRadius or UDim.new(0, 8) -- Smoother corners
+    elseif class == "UIGradient" then
+        inst.Color = RedzUIVip.Themes.PremiumDark["Color Hub 1"]
+        inst.Rotation = props and props.Rotation or 90
+    elseif class == "UIStroke" then
+        inst.Color = RedzUIVip.Themes.PremiumDark["Color Stroke"]
+        inst.Thickness = props and props.Thickness or 1.5
+    end
+    return inst
+end
+
+local function InsertTheme(element, themeKey)
+    ApplyTheme(element, themeKey == "Text" and "TextColor3" or themeKey == "DarkText" and "TextColor3" or "BackgroundColor3", themeKey)
+    return element
+end
+
+local function ApplyTheme(element, prop, themeKey)
+    if RedzUIVip.Themes.PremiumDark[themeKey] then
+        element[prop] = RedzUIVip.Themes.PremiumDark[themeKey]
+    end
+end
+
+local function CreateTween(props)
+    local obj, prop, value, duration, wait = unpack(props)
+    local tweenInfo = TweenInfo.new(duration or 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(obj, tweenInfo, {[prop] = value})
+    tween:Play()
+    if wait then
+        tween.Completed:Wait()
+    end
+end
+
+local function MakeDrag(frame)
+    local dragging, dragInput, startPos, startFramePos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            startPos = input.Position
+            startFramePos = frame.Position
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - startPos
+            frame.Position = UDim2.new(startFramePos.X.Scale, startFramePos.X.Offset + delta.X, startFramePos.Y.Scale, startFramePos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    return frame
+end
+
+local Funcs = {
+    ToggleVisible = function(element, bool)
+        element.Visible = bool == nil and not element.Visible or bool
+    end,
+    ToggleParent = function(element, bool, parent)
+        element.Parent = bool and parent or nil
+    end,
+    GetCallback = function(configs, index)
+        return configs[index] or configs.Callback or function() end
+    end,
+    FireCallback = function(callback, ...)
+        if typeof(callback) == "function" then
+            callback(...)
+        end
+    end,
+    InsertCallback = function(callback, newCallback)
+        callback = newCallback
+        return callback
+    end
+}
+
+local function ButtonFrame(container, title, desc, size)
+    local frame = Create("TextButton", container, {
+        Size = size or UDim2.new(1, -20),
+        BackgroundTransparency = 0.1,
+        BackgroundColor3 = RedzUIVip.Themes.PremiumDark["Color Hub 2"],
+        Text = "",
+        Name = "Option"
+    })
+    Make("UICorner", frame, {CornerRadius = UDim.new(0, 12)}) -- Smoother corners
+    Make("UIStroke", frame)
+    Make("UIGradient", frame, {Rotation = 45})
+
+    local titleLabel = InsertTheme(Create("TextLabel", frame, {
+        Size = UDim2.new(1, -10, 0, 20),
+        Position = UDim2.new(0, 10, 0, 5),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        Text = title,
+        TextColor3 = RedzUIVip.Themes.PremiumDark["Color Text"],
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd
+    }), "Text")
+
+    local descLabel = InsertTheme(Create("TextLabel", frame, {
+        Size = UDim2.new(1, -10, 0, 0),
+        Position = UDim2.new(0, 10, 0, 25),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        Font = Enum.Font.Gotham,
+        Text = desc,
+        TextColor3 = RedzUIVip.Themes.PremiumDark["Color Dark Text"],
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextWrapped = true
+    }), "DarkText")
+
+    local LabelFunc = {}
+    function LabelFunc:SetTitle(new) titleLabel.Text = tostring(new) end
+    function LabelFunc:SetDesc(new) descLabel.Text = tostring(new) end
+
+    return frame, LabelFunc
+end
+
+-- Main Window Creation
+function RedzUIVip:CreateWindow(Configs)
+    local WName = Configs[1] or Configs.Title or "Redz VIP UI"
+    local WSubtitle = Configs[2] or Configs.SubTitle or "Premium Edition"
+    local WSize = Configs[3] or Configs.Size or RedzUIVip.Save.UISize
+    local Theme = RedzUIVip.Themes.PremiumDark
+
+    local ScreenGui = Create("ScreenGui", CoreGui, {
+        Name = "RedzVipUI",
+        IgnoreGuiInset = true
+    })
+
+    local MainFrame = MakeDrag(Create("Frame", ScreenGui, {
+        Size = UDim2.new(0, WSize[1], 0, WSize[2]),
+        Position = UDim2.new(0.5, -WSize[1]/2, 0.5, -WSize[2]/2),
+        BackgroundColor3 = Theme["Color Hub 2"],
+        BorderSizePixel = 0,
+        ClipsDescendants = true
+    }))
+    local MainCorner = Make("UICorner", MainFrame, {CornerRadius = UDim.new(0, 16)})
+    Make("UIGradient", MainFrame, {Rotation = 90})
+
+    -- Glow Effect for Premium Look
+    local Glow = Create("ImageLabel", MainFrame, {
+        Size = UDim2.new(1, 40, 1, 40),
+        Position = UDim2.new(0, -20, 0, -20),
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://1316045217",
+        ImageColor3 = Theme["Color Stroke"],
+        ImageTransparency = 0.5,
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(10, 10, 118, 118)
+    })
+
+    local Title = Create("Frame", MainFrame, {
+        Size = UDim2.new(1, 0, 0, 60),
+        BackgroundTransparency = 1
+    })
+    local TitleLabel = InsertTheme(Create("TextLabel", Title, {
+        Size = UDim2.new(1, -60, 0, 30),
+        Position = UDim2.new(0, 15, 0, 5),
+        Font = Enum.Font.GothamBlack,
+        Text = WName,
+        TextColor3 = Theme["Color Text"],
+        TextSize = 24,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        BackgroundTransparency = 1,
+        TextStrokeTransparency = 0.8,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    }), "Text")
+    local SubTitle = InsertTheme(Create("TextLabel", Title, {
+        Size = UDim2.new(1, -60, 0, 20),
+        Position = UDim2.new(0, 15, 0, 35),
+        Font = Enum.Font.Gotham,
+        Text = WSubtitle,
+        TextColor3 = Theme["Color Dark Text"],
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        BackgroundTransparency = 1
+    }), "DarkText")
+
+    local CloseButton = Create("ImageButton", Title, {
+        Size = UDim2.new(0, 40, 0, 40),
+        Position = UDim2.new(1, -45, 0, 10),
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://10734962600"
+    })
+    local MinimizeButton = Create("ImageButton", Title, {
+        Size = UDim2.new(0, 40, 0, 40),
+        Position = UDim2.new(1, -90, 0, 10),
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://110657725541747"
+    })
+
+    local MainScroll = Create("ScrollingFrame", MainFrame, {
+        Size = UDim2.new(0, RedzUIVip.Save.TabSize, 1, -60),
+        Position = UDim2.new(0, 0, 0, 60),
+        BackgroundTransparency = 0.9,
+        BackgroundColor3 = Theme["Color Hub 2"],
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = Theme["Color Theme"],
+        BorderSizePixel = 0,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y
+    }, {
+        Create("UIListLayout", {Padding = UDim.new(0, 5)}),
+        Create("UIPadding", {PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5)})
+    })
+
+    local Containers = Create("Frame", MainFrame, {
+        Size = UDim2.new(1, -RedzUIVip.Save.TabSize, 1, -60),
+        Position = UDim2.new(0, RedzUIVip.Save.TabSize, 0, 60),
+        BackgroundTransparency = 1
+    })
+
+    local FirstTab = false
+    local Minimized, SaveSize, WaitClick = false
+
+    local Window = {}
+    function Window:CloseBtn()
+        CreateTween({MainFrame, "Transparency", 1, 0.5})
+        CreateTween({MainFrame, "Size", UDim2.new(0, 0, 0, 0), 0.5, true})
+        ScreenGui:Destroy()
+    end
+
+    function Window:MinimizeBtn()
+        if WaitClick then return end
+        WaitClick = true
+
+        if Minimized then
+            MinimizeButton.Image = "rbxassetid://110657725541747"
+            CreateTween({MainFrame, "Size", SaveSize, 0.3, true})
+            Minimized = false
+        else
+            MinimizeButton.Image = "rbxassetid://10709790948"
+            SaveSize = MainFrame.Size
+            CreateTween({MainFrame, "Size", UDim2.fromOffset(MainFrame.Size.X.Offset, 60), 0.3, true})
+            Minimized = true
+        end
+        WaitClick = false
+    end
+
+    function Window:Minimize()
+        MainFrame.Visible = not MainFrame.Visible
+    end
+
+    function Window:AddMinimizeButton(Configs)
+        local Button = MakeDrag(Create("ImageButton", ScreenGui, {
+            Size = UDim2.fromOffset(50, 50),
+            Position = UDim2.fromScale(0.1, 0.1),
+            BackgroundTransparency = 0.2,
+            BackgroundColor3 = Theme["Color Hub 2"],
+            AutoButtonColor = false
+        }))
+        Make("UICorner", Button, {CornerRadius = UDim.new(0.5, 0)})
+        Make("UIStroke", Button, {Thickness = 2})
+
+        if Configs.Button then
+            for k, v in pairs(Configs.Button) do
+                Button[k] = v
+            end
+        end
+        Button.Activated:Connect(Window.Minimize)
+        return {Button = Button}
+    end
+
+    function Window:Set(Val1, Val2)
+        if type(Val1) == "string" and type(Val2) == "string" then
+            TitleLabel.Text = Val1
+            SubTitle.Text = Val2
+        elseif type(Val1) == "string" then
+            TitleLabel.Text = Val1
+        end
+    end
+
+    function Window:Dialog(Configs)
+        if MainFrame:FindFirstChild("Dialog") then return end
+        if Minimized then Window:MinimizeBtn() end
+
+        local DTitle = Configs.Title or "Dialog"
+        local DText = Configs.Text or "This is a VIP Dialog"
+        local DOptions = Configs.Options or {}
+
+        local Frame = Create("Frame", {
+            Active = true,
+            Size = UDim2.fromOffset(300, 180),
+            Position = UDim2.fromScale(0.5, 0.5),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = Theme["Color Hub 2"]
+        }, {
+            InsertTheme(Create("TextLabel", {
+                Font = Enum.Font.GothamBlack,
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = DTitle,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextColor3 = Theme["Color Text"],
+                TextSize = 20,
+                Position = UDim2.fromOffset(15, 10),
+                BackgroundTransparency = 1
+            }), "Text"),
+            InsertTheme(Create("TextLabel", {
+                Font = Enum.Font.Gotham,
+                Size = UDim2.new(1, -30, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                Text = DText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextColor3 = Theme["Color Dark Text"],
+                TextSize = 14,
+                Position = UDim2.fromOffset(15, 45),
+                BackgroundTransparency = 1,
+                TextWrapped = true
+            }), "DarkText")
+        })
+        Make("UICorner", Frame, {CornerRadius = UDim.new(0, 12)})
+        Make("UIGradient", Frame, {Rotation = 60})
+        Make("UIStroke", Frame, {Thickness = 2})
+
+        local ButtonsHolder = Create("Frame", Frame, {
+            Size = UDim2.fromScale(1, 0.3),
+            Position = UDim2.fromScale(0, 1),
+            AnchorPoint = Vector2.new(0, 1),
+            BackgroundTransparency = 1
+        }, {
+            Create("UIListLayout", {
+                Padding = UDim.new(0, 15),
+                VerticalAlignment = Enum.VerticalAlignment.Center,
+                FillDirection = Enum.FillDirection.Horizontal,
+                HorizontalAlignment = Enum.HorizontalAlignment.Center
+            })
+        })
+
+        local Screen = Create("Frame", MainFrame, {
+            BackgroundTransparency = 0.5,
+            BackgroundColor3 = Theme["Color Stroke"],
+            Size = UDim2.new(1, 0, 1, 0),
+            Name = "Dialog"
+        })
+        Frame.Parent = Screen
+        CreateTween({Frame, "Size", UDim2.fromOffset(300, 180), 0.3})
+        CreateTween({Frame, "Transparency", 0, 0.2})
+        CreateTween({Screen, "BackgroundTransparency", 0.3, 0.2})
+
+        local Dialog = {}
+        function Dialog:Button(Configs)
+            local Name = Configs.Name or Configs.Title or "Button"
+            local Callback = Configs.Callback or function() end
+
+            local Button = Create("TextButton", ButtonsHolder, {
+                Size = UDim2.new(0.45, 0, 0, 40),
+                Text = Name,
+                Font = Enum.Font.GothamBold,
+                TextColor3 = Theme["Color Text"],
+                TextSize = 14,
+                BackgroundColor3 = Theme["Color Theme"],
+                BackgroundTransparency = 0.2
+            })
+            Make("UICorner", Button, {CornerRadius = UDim.new(0, 10)})
+            Make("UIStroke", Button)
+            Button.MouseEnter:Connect(function()
+                CreateTween({Button, "BackgroundTransparency", 0, 0.2})
+            end)
+            Button.MouseLeave:Connect(function()
+                CreateTween({Button, "BackgroundTransparency", 0.2, 0.2})
+            end)
+            Button.Activated:Connect(Dialog.Close)
+            Button.Activated:Connect(Callback)
+        end
+
+        function Dialog:Close()
+            CreateTween({Frame, "Size", UDim2.fromOffset(320, 200), 0.3})
+            CreateTween({Screen, "BackgroundTransparency", 1, 0.2})
+            CreateTween({Frame, "Transparency", 1, 0.2, true})
+            Screen:Destroy()
+        end
+
+        for _, Button in pairs(DOptions) do
+            Dialog:Button(Button)
+        end
+        return Dialog
+    end
+
+    function Window:SelectTab(TabSelect)
+        if type(TabSelect) == "number" then
+            RedzUIVip.Tabs[TabSelect].func:Enable()
+        else
+            for _, Tab in pairs(RedzUIVip.Tabs) do
+                if Tab.Cont == TabSelect.Cont then
+                    Tab.func:Enable()
+                end
+            end
+        end
+    end
+
+    local ContainerList = {}
+    function Window:MakeTab(Configs)
+        local TName = Configs.Title or "Tab"
+        local TIcon = Configs.Icon or "home"
+        TIcon = RedzUIVip.Icons[TIcon] or TIcon
+        if not TIcon:find("rbxassetid://") or TIcon:gsub("rbxassetid://", ""):len() < 6 then
+            TIcon = false
+        end
+
+        local TabSelect = Create("TextButton", MainScroll, {
+            Size = UDim2.new(1, 0, 0, 50),
+            BackgroundColor3 = Theme["Color Hub 2"],
+            Text = "",
+            AutoButtonColor = false
+        })
+        Make("UICorner", TabSelect, {CornerRadius = UDim.new(0, 12)})
+        Make("UIStroke", TabSelect)
+
+        local LabelTitle = InsertTheme(Create("TextLabel", TabSelect, {
+            Size = UDim2.new(1, TIcon and -35 or -15, 1, 0),
+            Position = UDim2.fromOffset(TIcon and 35 or 15, 0),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamSemibold,
+            Text = TName,
+            TextColor3 = Theme["Color Text"],
+            TextSize = 16,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTransparency = FirstTab and 0.3 or 0,
+            TextTruncate = Enum.TextTruncate.AtEnd
+        }), "Text")
+
+        local LabelIcon = Create("ImageLabel", TabSelect, {
+            Position = UDim2.new(0, 10, 0.5, 0),
+            Size = UDim2.new(0, 20, 0, 20),
+            AnchorPoint = Vector2.new(0, 0.5),
+            Image = TIcon or "",
+            BackgroundTransparency = 1,
+            ImageTransparency = FirstTab and 0.3 or 0
+        })
+
+        local Selected = InsertTheme(Create("Frame", TabSelect, {
+            Size = FirstTab and UDim2.new(0, 5, 0, 5) or UDim2.new(0, 5, 0, 20),
+            Position = UDim2.new(0, 2, 0.5, 0),
+            AnchorPoint = Vector2.new(0, 0.5),
+            BackgroundColor3 = Theme["Color Theme"],
+            BackgroundTransparency = FirstTab and 1 or 0
+        }), "Theme")
+        Make("UICorner", Selected, {CornerRadius = UDim.new(0.5, 0)})
+
+        local Container = Create("ScrollingFrame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            Position = UDim2.new(0, 0, 1, 0),
+            AnchorPoint = Vector2.new(0, 1),
+            ScrollBarThickness = 3,
+            BackgroundTransparency = 1,
+            ScrollBarImageColor3 = Theme["Color Theme"],
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ScrollingDirection = Enum.ScrollingDirection.Y,
+            BorderSizePixel = 0,
+            CanvasSize = UDim2.new(),
+            Name = ("Container %i [ %s ]"):format(#ContainerList + 1, TName)
+        }, {
+            Create("UIPadding", {
+                PaddingLeft = UDim.new(0, 15),
+                PaddingRight = UDim.new(0, 15),
+                PaddingTop = UDim.new(0, 10),
+                PaddingBottom = UDim.new(0, 10)
+            }),
+            Create("UIListLayout", {Padding = UDim.new(0, 8)})
+        })
+
+        table.insert(ContainerList, Container)
+        if not FirstTab then Container.Parent = Containers end
+
+        local function Tabs()
+            if Container.Parent then return end
+            for _, Frame in pairs(ContainerList) do
+                if Frame:IsA("ScrollingFrame") and Frame ~= Container then
+                    Frame.Parent = nil
+                end
+            end
+            Container.Parent = Containers
+            Container.Size = UDim2.new(1, 0, 1, 150)
+            for _, Tab in pairs(RedzUIVip.Tabs) do
+                if Tab.Cont ~= Container then
+                    Tab.func:Disable()
+                end
+            end
+            CreateTween({Container, "Size", UDim2.new(1, 0, 1, 0), 0.4})
+            CreateTween({LabelTitle, "TextTransparency", 0, 0.4})
+            CreateTween({LabelIcon, "ImageTransparency", 0, 0.4})
+            CreateTween({Selected, "Size", UDim2.new(0, 5, 0, 20), 0.4})
+            CreateTween({Selected, "BackgroundTransparency", 0, 0.4})
+        end
+        TabSelect.Activated:Connect(Tabs)
+
+        FirstTab = true
+        local Tab = {}
+        table.insert(RedzUIVip.Tabs, {TabInfo = {Name = TName, Icon = TIcon}, func = Tab, Cont = Container})
+        Tab.Cont = Container
+
+        function Tab:Disable()
+            Container.Parent = nil
+            CreateTween({LabelTitle, "TextTransparency", 0.3, 0.4})
+            CreateTween({LabelIcon, "ImageTransparency", 0.3, 0.4})
+            CreateTween({Selected, "Size", UDim2.new(0, 5, 0, 5), 0.4})
+            CreateTween({Selected, "BackgroundTransparency", 1, 0.4})
+        end
+
+        function Tab:Enable()
+            Tabs()
+        end
+
+        function Tab:Visible(Bool)
+            Funcs:ToggleVisible(TabSelect, Bool)
+            Funcs:ToggleParent(Container, Bool, Containers)
+        end
+
+        function Tab:Destroy()
+            TabSelect:Destroy()
+            Container:Destroy()
+        end
+
+        function Tab:AddSection(Configs)
+            local SectionName = Configs.Name or Configs.Title or "Section"
+            local SectionFrame = Create("Frame", Container, {
+                Size = UDim2.new(1, 0, 0, 30),
+                BackgroundTransparency = 1,
+                Name = "Option"
+            })
+
+            local SectionLabel = InsertTheme(Create("TextLabel", SectionFrame, {
+                Font = Enum.Font.GothamBlack,
+                Text = SectionName,
+                TextColor3 = Theme["Color Text"],
+                Size = UDim2.new(1, -10, 1, 0),
+                Position = UDim2.new(0, 10, 0, 0),
+                BackgroundTransparency = 1,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                TextSize = 18,
+                TextXAlignment = Enum.TextXAlignment.Left
+            }), "Text")
+
+            local Section = {}
+            table.insert(RedzUIVip.Options, {type = "Section", Name = SectionName, func = Section})
+            function Section:Visible(Bool)
+                SectionFrame.Visible = Bool == nil and not SectionFrame.Visible or Bool
+            end
+            function Section:Destroy()
+                SectionFrame:Destroy()
+            end
+            function Section:Set(New)
+                if New then
+                    SectionLabel.Text = tostring(New)
+                end
+            end
+            return Section
+        end
+
+        function Tab:AddParagraph(Configs)
+            local PName = Configs.Title or "Paragraph"
+            local PDesc = Configs.Text or ""
+            local Frame, LabelFunc = ButtonFrame(Container, PName, PDesc, UDim2.new(1, -20))
+            local Paragraph = {}
+            function Paragraph:Visible(...) Funcs:ToggleVisible(Frame, ...) end
+            function Paragraph:Destroy() Frame:Destroy() end
+            function Paragraph:SetTitle(Val) LabelFunc:SetTitle(tostring(Val)) end
+            function Paragraph:SetDesc(Val) LabelFunc:SetDesc(tostring(Val)) end
+            function Paragraph:Set(Val1, Val2)
+                if Val1 and Val2 then
+                    LabelFunc:SetTitle(tostring(Val1))
+                    LabelFunc:SetDesc(tostring(Val2))
+                elseif Val1 then
+                    LabelFunc:SetDesc(tostring(Val1))
+                end
+            end
+            return Paragraph
+        end
+
+        function Tab:AddButton(Configs)
+            local BName = Configs.Name or Configs.Title or "Button"
+            local BDescription = Configs.Desc or Configs.Description or ""
+            local Callback = Funcs:GetCallback(Configs, 2)
+            local FButton, LabelFunc = ButtonFrame(Container, BName, BDescription, UDim2.new(1, -20))
+
+            local ButtonIcon = Create("ImageLabel", FButton, {
+                Size = UDim2.new(0, 20, 0, 20),
+                Position = UDim2.new(1, -15, 0.5, 0),
+                AnchorPoint = Vector2.new(1, 0.5),
+                BackgroundTransparency = 1,
+                Image = "rbxassetid://10709791437"
+            })
+
+            FButton.MouseEnter:Connect(function()
+                CreateTween({FButton, "BackgroundTransparency", 0, 0.2})
+            end)
+            FButton.MouseLeave:Connect(function()
+                CreateTween({FButton, "BackgroundTransparency", 0.1, 0.2})
+            end)
+            FButton.Activated:Connect(function()
+                Funcs:FireCallback(Callback)
+            end)
+
+            local Button = {}
+            function Button:Visible(...) Funcs:ToggleVisible(FButton, ...) end
+            function Button:Destroy() FButton:Destroy() end
+            function Button:Callback(...) Funcs:InsertCallback(Callback, ...) end
+            function Button:Set(Val1, Val2)
+                if type(Val1) == "string" and type(Val2) == "string" then
+                    LabelFunc:SetTitle(Val1)
+                    LabelFunc:SetDesc(Val2)
+                elseif type(Val1) == "string" then
+                    LabelFunc:SetTitle(Val1)
+                elseif type(Val1) == "function" then
+                    Callback = Val1
+                end
+            end
+            return Button
+        end
+
+        function Tab:AddToggle(Configs)
+            local TName = Configs.Name or Configs.Title or "Toggle"
+            local TDesc = Configs.Desc or Configs.Description or ""
+            local Callback = Funcs:GetCallback(Configs, 3)
+            local Flag = Configs.Flag or false
+            local Default = Configs.Default or false
+            if Flag and RedzUIVip.Flags[Flag] then Default = RedzUIVip.Flags[Flag] end
+
+            local Button, LabelFunc = ButtonFrame(Container, TName, TDesc, UDim2.new(1, -50))
+            local ToggleHolder = Create("Frame", Button, {
+                Size = UDim2.new(0, 50, 0, 25),
+                Position = UDim2.new(1, -10, 0.5, 0),
+                AnchorPoint = Vector2.new(1, 0.5),
+                BackgroundColor3 = Theme["Color Stroke"]
+            })
+            Make("UICorner", ToggleHolder, {CornerRadius = UDim.new(0.5, 0)})
+            Make("UIStroke", ToggleHolder)
+
+            local Slider = Create("Frame", ToggleHolder, {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0.8, 0, 0.8, 0),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                AnchorPoint = Vector2.new(0.5, 0.5)
+            })
+
+            local Toggle = InsertTheme(Create("Frame", Slider, {
+                Size = UDim2.new(0, 20, 0, 20),
+                Position = UDim2.new(Default and 1 or 0, 0, 0.5, 0),
+                AnchorPoint = Vector2.new(Default and 1 or 0, 0.5),
+                BackgroundColor3 = Theme[Default and "Color Toggle On" or "Color Toggle Off"]
+            }), Default and "Color Toggle On" or "Color Toggle Off")
+            Make("UICorner", Toggle, {CornerRadius = UDim.new(0.5, 0)})
+
+            local WaitClick
+            local function SetToggle(Val)
+                if WaitClick then return end
+                WaitClick, Default = true, Val
+                if Flag then RedzUIVip.Flags[Flag] = Default end
+                Funcs:FireCallback(Callback, Default)
+                CreateTween({Toggle, "Position", UDim2.new(Val and 1 or 0, 0, 0.5, 0), 0.3})
+                CreateTween({Toggle, "BackgroundColor3", Theme[Val and "Color Toggle On" or "Color Toggle Off"], 0.3})
+                CreateTween({Toggle, "AnchorPoint", Vector2.new(Val and 1 or 0, 0.5), 0.3, true})
+                WaitClick = false
+            end
+            task.spawn(SetToggle, Default)
+
+            Button.Activated:Connect(function()
+                SetToggle(not Default)
+            end)
+
+            local ToggleObj = {}
+            function ToggleObj:Visible(...) Funcs:ToggleVisible(Button, ...) end
+            function ToggleObj:Destroy() Button:Destroy() end
+            function ToggleObj:Callback(...) Funcs:InsertCallback(Callback, ...)() end
+            function ToggleObj:Set(Val1, Val2)
+                if type(Val1) == "string" and type(Val2) == "string" then
+                    LabelFunc:SetTitle(Val1)
+                    LabelFunc:SetDesc(Val2)
+                elseif type(Val1) == "string" then
+                    LabelFunc:SetTitle(Val1)
+                elseif type(Val1) == "boolean" then
+                    task.spawn(SetToggle, Val1)
+                elseif type(Val1) == "function" then
+                    Callback = Val1
+                end
+            end
+            return ToggleObj
+        end
+
+        function Tab:AddDropdown(Configs)
+            local DName = Configs.Name or Configs.Title or "Dropdown"
+            local DDesc = Configs.Desc or Configs.Description or ""
+            local DOptions = Configs.Options or {}
+            local OpDefault = Configs.Default or {}
+            local Flag = Configs.Flag or false
+            local DMultiSelect = Configs.MultiSelect or false
+            local Callback = Funcs:GetCallback(Configs, 4)
+
+            local Button, LabelFunc = ButtonFrame(Container, DName, DDesc, UDim2.new(1, -200))
+            local SelectedFrame = InsertTheme(Create("Frame", Button, {
+                Size = UDim2.new(0, 180, 0, 30),
+                Position = UDim2.new(1, -10, 0.5, 0),
+                AnchorPoint = Vector2.new(1, 0.5),
+                BackgroundColor3 = Theme["Color Stroke"]
+            }), "Stroke")
+            Make("UICorner", SelectedFrame, {CornerRadius = UDim.new(0, 10)})
+            Make("UIGradient", SelectedFrame)
+
+            local ActiveLabel = InsertTheme(Create("TextLabel", SelectedFrame, {
+                Size = UDim2.new(0.85, 0, 0.85, 0),
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                BackgroundTransparency = 1,
+                Font = Enum.Font.GothamBold,
+                TextScaled = true,
+                TextColor3 = Theme["Color Text"],
+                Text = "..."
+            }), "Text")
+
+            local Arrow = Create("ImageLabel", SelectedFrame, {
+                Size = UDim2.new(0, 20, 0, 20),
+                Position = UDim2.new(1, -10, 0.5, 0),
+                AnchorPoint = Vector2.new(1, 0.5),
+                Image = "rbxassetid://10709791523",
+                BackgroundTransparency = 1
+            })
+
+            local NoClickFrame = Create("TextButton", ScreenGui, {
+                Name = "AntiClick",
+                Size = UDim2.new(1, 0, 1, 0),
+                BackgroundTransparency = 1,
+                Visible = false,
+                Text = ""
+            })
+
+            local DropFrame = Create("Frame", NoClickFrame, {
+                Size = UDim2.new(0, 180, 0, 0),
+                BackgroundTransparency = 0.1,
+                BackgroundColor3 = Theme["Color Hub 2"],
+                AnchorPoint = Vector2.new(0, 1),
+                Name = "DropdownFrame",
+                ClipsDescendants = true,
+                Active = true
+            })
+            Make("UICorner", DropFrame, {CornerRadius = UDim.new(0, 10)})
+            Make("UIStroke", DropFrame)
+            Make("UIGradient", DropFrame, {Rotation = 45})
+
+            local ScrollFrame = Create("ScrollingFrame", DropFrame, {
+                ScrollBarImageColor3 = Theme["Color Theme"],
+                Size = UDim2.new(1, 0, 1, 0),
+                ScrollBarThickness = 3,
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                CanvasSize = UDim2.new(),
+                ScrollingDirection = Enum.ScrollingDirection.Y,
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                Active = true
+            }, {
+                Create("UIPadding", {
+                    PaddingLeft = UDim.new(0, 10),
+                    PaddingRight = UDim.new(0, 10),
+                    PaddingTop = UDim.new(0, 8),
+                    PaddingBottom = UDim.new(0, 8)
+                }),
+                Create("UIListLayout", {Padding = UDim.new(0, 5)})
+            })
+
+            local ScrollSize, WaitClick = 5
+            local function Disable()
+                WaitClick = true
+                CreateTween({Arrow, "Rotation", 0, 0.3})
+                CreateTween({DropFrame, "Size", UDim2.new(0, 180, 0, 0), 0.3, true})
+                CreateTween({Arrow, "ImageColor3", Color3.fromRGB(255, 255, 255), 0.3})
+                Arrow.Image = "rbxassetid://10709791523"
+                NoClickFrame.Visible = false
+                WaitClick = false
+            end
+
+            local function GetFrameSize()
+                return UDim2.fromOffset(180, ScrollSize)
+            end
+
+            local function CalculateSize()
+                local Count = 0
+                for _, Frame in pairs(ScrollFrame:GetChildren()) do
+                    if Frame:IsA("Frame") or Frame.Name == "Option" then
+                        Count = Count + 1
+                    end
+                end
+                ScrollSize = math.clamp(Count, 0, 8) * 30 + 10
+                if NoClickFrame.Visible then
+                    CreateTween({DropFrame, "Size", GetFrameSize(), 0.3})
+                end
+            end
+
+            local function Minimize()
+                if WaitClick then return end
+                WaitClick = true
+                if NoClickFrame.Visible then
+                    Arrow.Image = "rbxassetid://10709791523"
+                    CreateTween({Arrow, "ImageColor3", Color3.fromRGB(255, 255, 255), 0.3})
+                    CreateTween({DropFrame, "Size", UDim2.new(0, 180, 0, 0), 0.3, true})
+                    NoClickFrame.Visible = false
+                else
+                    NoClickFrame.Visible = true
+                    Arrow.Image = "rbxassetid://10709790948"
+                    CreateTween({Arrow, "ImageColor3", Theme["Color Theme"], 0.3})
+                    CreateTween({DropFrame, "Size", GetFrameSize(), 0.3})
+                end
+                WaitClick = false
+            end
+
+            local function CalculatePos()
+                local FramePos = SelectedFrame.AbsolutePosition
+                local ScreenSize = ScreenGui.AbsoluteSize
+                local ClampX = math.clamp(FramePos.X, 0, ScreenSize.X - DropFrame.Size.X.Offset)
+                local ClampY = math.clamp(FramePos.Y, 0, ScreenSize.Y)
+                local NewPos = UDim2.fromOffset(ClampX, ClampY)
+                local AnchorPoint = FramePos.Y > ScreenSize.Y / 1.4 and 1 or ScrollSize > 100 and 0.5 or 0
+                DropFrame.AnchorPoint = Vector2.new(0, AnchorPoint)
+                CreateTween({DropFrame, "Position", NewPos, 0.15})
+            end
+
+            local AddNewOptions, GetOptions, AddOption, RemoveOption, Selected
+            local Default = type(OpDefault) ~= "table" and {OpDefault} or OpDefault
+            local MultiSelect = DMultiSelect
+            local Options = {}
+            Selected = MultiSelect and {} or (Flag and RedzUIVip.Flags[Flag] or Default[1])
+
+            if MultiSelect then
+                for _, Value in pairs(Flag and RedzUIVip.Flags[Flag] or Default) do
+                    if DOptions[Value] then
+                        Selected[Value] = true
+                    end
+                end
+            end
+
+            local function CallbackSelected()
+                if Flag then RedzUIVip.Flags[Flag] = MultiSelect and Selected or tostring(Selected) end
+                Funcs:FireCallback(Callback, Selected)
+            end
+
+            local function UpdateLabel()
+                if MultiSelect then
+                    local list = {}
+                    for index, Value in pairs(Selected) do
+                        if Value then
+                            table.insert(list, index)
+                        end
+                    end
+                    ActiveLabel.Text = #list > 0 and table.concat(list, ", ") or "..."
+                else
+                    ActiveLabel.Text = tostring(Selected or "...")
+                end
+            end
+
+            local function UpdateSelected()
+                for _, v in pairs(Options) do
+                    local nodes, Stats = v.nodes, MultiSelect and Selected[v.Name] or v.Value == Selected
+                    CreateTween({nodes[2], "BackgroundTransparency", Stats and 0 or 0.8, 0.4})
+                    CreateTween({nodes[2], "Size", Stats and UDim2.fromOffset(5, 15) or UDim2.fromOffset(5, 5), 0.4})
+                    CreateTween({nodes[3], "TextTransparency", Stats and 0 or 0.4, 0.4})
+                end
+                UpdateLabel()
+            end
+
+            local function Select(Option)
+                if MultiSelect then
+                    Option.Stats = not Option.Stats
+                    Selected[Option.Name] = Option.Stats
+                else
+                    Selected = Option.Value
+                end
+                CallbackSelected()
+                UpdateSelected()
+            end
+
+            AddOption = function(index, Value)
+                local Name = tostring(type(index) == "string" and index or Value)
+                if Options[Name] then return end
+                Options[Name] = {index = index, Value = Value, Name = Name, Stats = false}
+
+                if MultiSelect then
+                    Options[Name].Stats = Selected[Name] or false
+                end
+
+                local Button = Create("TextButton", ScrollFrame, {
+                    Name = "Option",
+                    Size = UDim2.new(1, 0, 0, 30),
+                    BackgroundTransparency = 0.1,
+                    BackgroundColor3 = Theme["Color Hub 2"],
+                    Text = ""
+                })
+                Make("UICorner", Button, {CornerRadius = UDim.new(0, 8)})
+                Make("UIStroke", Button)
+
+                local IsSelected = InsertTheme(Create("Frame", Button, {
+                    Position = UDim2.new(0, 5, 0.5, 0),
+                    Size = UDim2.new(0, 5, 0, 5),
+                    BackgroundColor3 = Theme["Color Theme"],
+                    BackgroundTransparency = 1,
+                    AnchorPoint = Vector2.new(0, 0.5)
+                }), "Theme")
+                Make("UICorner", IsSelected, {CornerRadius = UDim.new(0.5, 0)})
+
+                local OptionName = InsertTheme(Create("TextLabel", Button, {
+                    Size = UDim2.new(1, 0, 1, 0),
+                    Position = UDim2.new(0, 15, 0, 0),
+                    Text = Name,
+                    TextColor3 = Theme["Color Text"],
+                    Font = Enum.Font.GothamBold,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    BackgroundTransparency = 1,
+                    TextTransparency = 0.4,
+                    TextSize = 14
+                }), "Text")
+
+                Button.Activated:Connect(function()
+                    Select(Options[Name])
+                end)
+
+                Options[Name].nodes = {Button, IsSelected, OptionName}
+            end
+
+            RemoveOption = function(index, Value)
+                local Name = tostring(type(index) == "string" and index or Value)
+                if Options[Name] then
+                    if MultiSelect then Selected[Name] = nil else Selected = nil end
+                    Options[Name].nodes[1]:Destroy()
+                    table.clear(Options[Name])
+                    Options[Name] = nil
+                end
+            end
+
+            GetOptions = function()
+                return Options
+            end
+
+            AddNewOptions = function(List, Clear)
+                if Clear then
+                    for _, v in pairs(Options) do
+                        RemoveOption(nil, v.Name)
+                    end
+                end
+                for _, v in pairs(List) do
+                    AddOption(v, v)
+                end
+                CallbackSelected()
+                UpdateSelected()
+            end
+
+            for _, v in pairs(DOptions) do
+                AddOption(v, v)
+            end
+            CallbackSelected()
+            UpdateSelected()
+
+            Button.Activated:Connect(Minimize)
+            NoClickFrame.MouseButton1Down:Connect(Disable)
+            NoClickFrame.MouseButton1Click:Connect(Disable)
+            MainFrame:GetPropertyChangedSignal("Visible"):Connect(Disable)
+            SelectedFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(CalculatePos)
+            Button.Activated:Connect(CalculateSize)
+            ScrollFrame.ChildAdded:Connect(CalculateSize)
+            ScrollFrame.ChildRemoved:Connect(CalculateSize)
+            CalculatePos()
+            CalculateSize()
+
+            local Dropdown = {}
+            function Dropdown:Visible(...) Funcs:ToggleVisible(Button, ...) end
+            function Dropdown:Destroy() Button:Destroy() end
+            function Dropdown:Callback(...) Funcs:InsertCallback(Callback, ...)(Selected) end
+            function Dropdown:Add(...)
+                local NewOptions = {...}
+                if type(NewOptions[1]) == "table" then
+                    AddNewOptions(NewOptions[1])
+                else
+                    AddNewOptions(NewOptions)
+                end
+            end
+            function Dropdown:Remove(Option)
+                for index, Value in pairs(GetOptions()) do
+                    if type(Option) == "number" and index == Option or Value.Name == Option then
+                        RemoveOption(index, Value.Value)
+                    end
+                end
+            end
+            function Dropdown:Select(Option)
+                for _, Val in pairs(Options) do
+                    if Val.Name == Option then
+                        Select(Val)
+                    end
+                end
+            end
+            function Dropdown:Set(Val1, Clear)
+                if type(Val1) == "table" then
+                    AddNewOptions(Val1, not Clear)
+                elseif type(Val1) == "function" then
+                    Callback = Val1
+                end
+            end
+            return Dropdown
+        end
+
+        function Tab:AddSlider(Configs)
+            local SName = Configs.Name or Configs.Title or "Slider"
+            local SDesc = Configs.Desc or Configs.Description or ""
+            local Min = Configs.Min or Configs.MinValue or 10
+            local Max = Configs.Max or Configs.MaxValue or 100
+            local Increase = Configs.Increase or 1
+            local Callback = Funcs:GetCallback(Configs, 6)
+            local Flag = Configs.Flag or false
+            local Default = Configs.Default or 25
+            if Flag and RedzUIVip.Flags[Flag] then Default = RedzUIVip.Flags[Flag] end
+            Min, Max = Min / Increase, Max / Increase
+
+            local Button, LabelFunc = ButtonFrame(Container, SName, SDesc, UDim2.new(1, -200))
+            local SliderHolder = Create("TextButton", Button, {
+                Size = UDim2.new(0.5, 0, 1, 0),
+                Position = UDim2.new(1, 0, 0.5, 0),
+                AnchorPoint = Vector2.new(1, 0.5),
+                AutoButtonColor = false,
+                Text = "",
+                BackgroundTransparency = 1
+            })
+
+            local SliderBar = InsertTheme(Create("Frame", SliderHolder, {
+                BackgroundColor3 = Theme["Color Stroke"],
+                Size = UDim2.new(1, -20, 0, 8),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                AnchorPoint = Vector2.new(0.5, 0.5)
+            }), "Stroke")
+            Make("UICorner", SliderBar, {CornerRadius = UDim.new(0.5, 0)})
+
+            local Indicator = InsertTheme(Create("Frame", SliderBar, {
+                BackgroundColor3 = Theme["Color Slider Fill"],
+                Size = UDim2.fromScale(0.3, 1),
+                BorderSizePixel = 0
+            }), "Slider Fill")
+            Make("UICorner", Indicator, {CornerRadius = UDim.new(0.5, 0)})
+
+            local SliderIcon = Create("Frame", SliderBar, {
+                Size = UDim2.new(0, 16, 0, 16),
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                Position = UDim2.fromScale(0.3, 0.5),
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                BackgroundTransparency = 0.2
+            })
+            Make("UICorner", SliderIcon, {CornerRadius = UDim.new(0.5, 0)})
+
+            local LabelVal = InsertTheme(Create("TextLabel", SliderHolder, {
+                Size = UDim2.new(0, 30, 0, 20),
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(0, -10, 0.5, 0),
+                BackgroundTransparency = 1,
+                TextColor3 = Theme["Color Text"],
+                Font = Enum.Font.GothamBold,
+                TextSize = 14
+            }), "Text")
+
+            local UIScale = Create("UIScale", LabelVal)
+
+            local BaseMousePos = Create("Frame", SliderBar, {
+                Position = UDim2.new(0, 0, 0.5, 0),
+                Visible = false
+            })
+
+            local function UpdateLabel(NewValue)
+                local Number = math.floor((NewValue * Increase) * 100) / 100
+                Default, LabelVal.Text = Number, tostring(Number)
+                Funcs:FireCallback(Callback, Default)
+            end
+
+            local function ControlPos()
+                local MousePos = PlayerMouse.X - BaseMousePos.AbsolutePosition.X
+                local ConfigureDpiPos = MousePos / SliderBar.AbsoluteSize.X
+                SliderIcon.Position = UDim2.new(math.clamp(ConfigureDpiPos, 0, 1), 0, 0.5, 0)
+            end
+
+            local function UpdateValues()
+                Indicator.Size = UDim2.new(SliderIcon.Position.X.Scale, 0, 1, 0)
+                local SliderPos = SliderIcon.Position.X.Scale
+                local NewValue = math.floor(((SliderPos * Max) / Max) * (Max - Min) + Min)
+                UpdateLabel(NewValue)
+            end
+
+            SliderHolder.MouseButton1Down:Connect(function()
+                CreateTween({SliderIcon, "BackgroundTransparency", 0, 0.3})
+                Container.ScrollingEnabled = false
+                while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+                    task.wait()
+                    ControlPos()
+                end
+                CreateTween({SliderIcon, "BackgroundTransparency", 0.2, 0.3})
+                Container.ScrollingEnabled = true
+                if Flag then RedzUIVip.Flags[Flag] = Default end
+            end)
+
+            LabelVal:GetPropertyChangedSignal("Text"):Connect(function()
+                UIScale.Scale = 0.5
+                CreateTween({UIScale, "Scale", 1.3, 0.15})
+                CreateTween({LabelVal, "Rotation", math.random(-2, 2) * 5, 0.2, true})
+                CreateTween({UIScale, "Scale", 1, 0.2})
+                CreateTween({LabelVal, "Rotation", 0, 0.15})
+            end)
+
+            local function SetSlider(NewValue)
+                if type(NewValue) ~= "number" then return end
+                local Min, Max = Min * Increase, Max * Increase
+                local SliderPos = (NewValue - Min) / (Max - Min)
+                if Flag then RedzUIVip.Flags[Flag] = NewValue end
+                CreateTween({SliderIcon, "Position", UDim2.fromScale(math.clamp(SliderPos, 0, 1), 0.5), 0.3})
+            end
+            SetSlider(Default)
+            SliderIcon:GetPropertyChangedSignal("Position"):Connect(UpdateValues)
+            UpdateValues()
+
+            local Slider = {}
+            function Slider:Set(NewVal1, NewVal2)
+                if NewVal1 and NewVal2 then
+                    LabelFunc:SetTitle(NewVal1)
+                    LabelFunc:SetDesc(NewVal2)
+                elseif type(NewVal1) == "string" then
+                    LabelFunc:SetTitle(NewVal1)
+                elseif type(NewVal1) == "function" then
+                    Callback = NewVal1
+                elseif type(NewVal1) == "number" then
+                    SetSlider(NewVal1)
+                end
+            end
+            function Slider:Callback(...) Funcs:InsertCallback(Callback, ...)(tonumber(Default)) end
+            function Slider:Visible(...) Funcs:ToggleVisible(Button, ...) end
+            function Slider:Destroy() Button:Destroy() end
+            return Slider
+        end
+
+        function Tab:AddTextBox(Configs)
+            local TName = Configs.Name or Configs.Title or "Text Box"
+            local TDesc = Configs.Desc or Configs.Description or ""
+            local TDefault = Configs.Default or ""
+            local TPlaceholderText = Configs.PlaceholderText or "Input"
+            local TClearText = Configs.ClearText or false
+            local Callback = Funcs:GetCallback(Configs, 4)
+
+            local Button, LabelFunc = ButtonFrame(Container, TName, TDesc, UDim2.new(1, -200))
+            local SelectedFrame = InsertTheme(Create("Frame", Button, {
+                Size = UDim2.new(0, 180, 0, 30),
+                Position = UDim2.new(1, -10, 0.5, 0),
+                AnchorPoint = Vector2.new(1, 0.5),
+                BackgroundColor3 = Theme["Color Stroke"]
+            }), "Stroke")
+            Make("UICorner", SelectedFrame, {CornerRadius = UDim.new(0, 10)})
+            Make("UIGradient", SelectedFrame)
+
+            local TextBoxInput = InsertTheme(Create("TextBox", SelectedFrame, {
+                Size = UDim2.new(0.85, 0, 0.85, 0),
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                BackgroundTransparency = 1,
+                Font = Enum.Font.GothamBold,
+                TextScaled = true,
+                TextColor3 = Theme["Color Text"],
+                ClearTextOnFocus = TClearText,
+                PlaceholderText = TPlaceholderText,
+                Text = TDefault
+            }), "Text")
+
+            local Pencil = Create("ImageLabel", SelectedFrame, {
+                Size = UDim2.new(0, 16, 0, 16),
+                Position = UDim2.new(1, -10, 0.5, 0),
+                AnchorPoint = Vector2.new(1, 0.5),
+                Image = "rbxassetid://15637081879",
+                BackgroundTransparency = 1
+            })
+
+            local TextBox = {}
+            local function Input()
+                local Text = TextBoxInput.Text
+                if Text:gsub(" ", ""):len() > 0 then
+                    if TextBox.OnChanging then Text = TextBox.OnChanging(Text) or Text end
+                    Funcs:FireCallback(Callback, Text)
+                    TextBoxInput.Text = Text
+                end
+            end
+
+            TextBoxInput.FocusLost:Connect(Input)
+            TextBoxInput.Focused:Connect(function()
+                CreateTween({Pencil, "ImageColor3", Theme["Color Theme"], 0.3})
+            end)
+            TextBoxInput.FocusLost:Connect(function()
+                CreateTween({Pencil, "ImageColor3", Color3.fromRGB(255, 255, 255), 0.3})
+            end)
+
+            TextBox.OnChanging = false
+            function TextBox:Visible(...) Funcs:ToggleVisible(Button, ...) end
+            function TextBox:Destroy() Button:Destroy() end
+            return TextBox
+        end
+
+        function Tab:AddDiscordInvite(Configs)
+            local Title = Configs.Name or Configs.Title or "Discord"
+            local Desc = Configs.Desc or Configs.Description or ""
+            local Logo = Configs.Logo or ""
+            local Invite = Configs.Invite or ""
+
+            local InviteHolder = Create("Frame", Container, {
+                Size = UDim2.new(1, 0, 0, 100),
+                Name = "Option",
+                BackgroundTransparency = 1
+            })
+
+            local InviteLabel = Create("TextLabel", InviteHolder, {
+                Size = UDim2.new(1, 0, 0, 20),
+                Position = UDim2.new(0, 10, 0, 0),
+                TextColor3 = Theme["Color Theme"],
+                Font = Enum.Font.GothamBold,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                BackgroundTransparency = 1,
+                TextSize = 12,
+                Text = Invite
+            })
+
+            local FrameHolder = InsertTheme(Create("Frame", InviteHolder, {
+                Size = UDim2.new(1, 0, 0, 80),
+                AnchorPoint = Vector2.new(0, 1),
+                Position = UDim2.new(0, 0, 1, 0),
+                BackgroundColor3 = Theme["Color Hub 2"]
+            }), "Frame")
+            Make("UICorner", FrameHolder, {CornerRadius = UDim.new(0, 12)})
+            Make("UIStroke", FrameHolder)
+            Make("UIGradient", FrameHolder, {Rotation = 45})
+
+            local ImageLabel = Create("ImageLabel", FrameHolder, {
+                Size = UDim2.new(0, 40, 0, 40),
+                Position = UDim2.new(0, 10, 0, 10),
+                Image = Logo,
+                BackgroundTransparency = 1
+            })
+            Make("UICorner", ImageLabel, {CornerRadius = UDim.new(0, 8)})
+            Make("UIStroke", ImageLabel)
+
+            local LTitle = InsertTheme(Create("TextLabel", FrameHolder, {
+                Size = UDim2.new(1, -60, 0, 20),
+                Position = UDim2.new(0, 60, 0, 10),
+                Font = Enum.Font.GothamBold,
+                TextColor3 = Theme["Color Text"],
+                TextXAlignment = Enum.TextXAlignment.Left,
+                BackgroundTransparency = 1,
+                TextSize = 14,
+                Text = Title
+            }), "Text")
+
+            local LDesc = InsertTheme(Create("TextLabel", FrameHolder, {
+                Size = UDim2.new(1, -60, 0, 0),
+                Position = UDim2.new(0, 60, 0, 35),
+                TextWrapped = true,
+                AutomaticSize = Enum.AutomaticSize.Y,
+                Font = Enum.Font.Gotham,
+                TextColor3 = Theme["Color Dark Text"],
+                TextXAlignment = Enum.TextXAlignment.Left,
+                BackgroundTransparency = 1,
+                TextSize = 10,
+                Text = Desc
+            }), "DarkText")
+
+            local JoinButton = Create("TextButton", FrameHolder, {
+                Size = UDim2.new(1, -20, 0, 25),
+                AnchorPoint = Vector2.new(0.5, 1),
+                Position = UDim2.new(0.5, 0, 1, -10),
+                Text = "Copy Link",
+                Font = Enum.Font.GothamBold,
+                TextSize = 14,
+                TextColor3 = Theme["Color Text"],
+                BackgroundColor3 = Theme["Color Theme"]
+            })
+            Make("UICorner", JoinButton, {CornerRadius = UDim.new(0, 8)})
+            Make("UIStroke", JoinButton)
+
+            local ClickDelay
+            JoinButton.Activated:Connect(function()
+                setclipboard(Invite)
+                if ClickDelay then return end
+                ClickDelay = true
+                JoinButton.Text = "Copied!"
+                CreateTween({JoinButton, "BackgroundColor3", Color3.fromRGB(100, 100, 100), 0.3})
+                task.wait(3)
+                JoinButton.Text = "Copy Link"
+                CreateTween({JoinButton, "BackgroundColor3", Theme["Color Theme"], 0.3})
+                ClickDelay = false
+            end)
+
+            local DiscordInvite = {}
+            function DiscordInvite:Destroy() InviteHolder:Destroy() end
+            function DiscordInvite:Visible(...) Funcs:ToggleVisible(InviteHolder, ...) end
+            return DiscordInvite
+        end
+
+        return Tab
+    end
+
+    CloseButton.Activated:Connect(Window.CloseBtn)
+    MinimizeButton.Activated:Connect(Window.MinimizeBtn)
+
+    -- Initial Animation
+    MainFrame.Transparency = 1
+    MainFrame.Size = UDim2.new(0, 0, 0, 0)
+    CreateTween({MainFrame, "Transparency", 0, 0.5})
+    CreateTween({MainFrame, "Size", UDim2.new(0, WSize[1], 0, WSize[2]), 0.5})
+
+    return Window
+end
+
+return RedzUIVip
